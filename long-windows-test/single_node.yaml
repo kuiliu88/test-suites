@@ -1,0 +1,73 @@
+services:
+  timeplus:
+    image: timeplus/timeplusd:3.5.1-rc.1
+    container_name: timeplusd
+    ports:
+      - "8463:8463"      #TCP
+      - "3218:3218"
+      - "4196:4196"
+    entrypoint: >
+      /bin/bash -c "sed -i'' 's/preallocate: true/preallocate: false/g' /etc/timeplusd-server/config.yaml && /entrypoint.sh"
+    environment:
+      - MAX_CONCURRENT_QUERIES=100        # Default: 100
+      - MAX_CONCURRENT_SELECT_QUERIES=100     # Default: 100
+      - MAX_CONCURRENT_INSERT_QUERIES=100     # Default: 100
+      - MAX_CONCURRENT_STREAMING_QUERIES=100   # Default: 100
+      - MAX_SERVER_MEMORY_USAGE_TO_RAM_RATIO=0.9 # Default: 0.9
+      - MAX_SERVER_MEMORY_CACHE_TO_RAM_RATIO=0.5 # Default: 0.5
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  broker1:
+    image: redpandadata/redpanda:latest
+    container_name: broker1
+    hostname: broker1
+
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --reserve-memory
+      - "0M"
+      - --overprovisioned
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://broker1:9092,external://localhost:19092
+      - --rpc-addr
+      - 0.0.0.0:33145
+      - --advertise-rpc-addr
+      - broker1:33145
+
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+      - "9644:9644"
+
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+
+    healthcheck:
+      test:
+        - CMD
+        - rpk
+        - cluster
+        - health
+        - --brokers
+        - 127.0.0.1:9092
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+    restart: unless-stopped
+
+volumes:
+  redpanda_data:
+  timeplus_data:
+    driver: local
